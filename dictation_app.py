@@ -51,15 +51,20 @@ def score_sentence(user_input, correct):
 
     for i, word in enumerate(correct_words):
         if i < len(user_words):
-            similarity = SequenceMatcher(None, user_words[i], word).ratio()
-            if similarity > 0.85:
+            if user_words[i] == word:
                 correct_count += 1
                 feedback.append(f"✅ {word}")
             else:
                 feedback.append(f"❌ {word} (you wrote: {user_words[i]})")
         else:
             feedback.append(f"❌ {word} (missing)")
-    
+
+    # Penalize extra words
+    if len(user_words) > len(correct_words):
+        extra_words = user_words[len(correct_words):]
+        for w in extra_words:
+            feedback.append(f"❌ extra word: {w}")
+
     accuracy = round((correct_count / total) * 100, 2)
     return accuracy, feedback
 
