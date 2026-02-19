@@ -6,6 +6,7 @@ from pathlib import Path
 AUDIO_FOLDER = "audio_sentences"
 
 correct_sentences = [
+"Les 3. Welke dag is het vandaag?",
 "Welke dag is het vandaag?",
 "Het is vandaag dinsdag.",
 "Gisteren was het maandag.",
