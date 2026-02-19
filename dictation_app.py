@@ -1,45 +1,20 @@
 import streamlit as st
 import re
-from difflib import SequenceMatcher
+import importlib
 from pathlib import Path
 
-AUDIO_FOLDER = "audio_sentences"
-
-correct_sentences = [
-"Les 3. Welke dag is het vandaag?",
-"Welke dag is het vandaag?",
-"Het is vandaag dinsdag.",
-"Gisteren was het maandag.",
-"En morgen is het woensdag.",
-"Na woensdag volgen donderdag en vrijdag.",
-"De laatste twee dagen van de week zijn zaterdag en zondag.",
-"Dan is het weekend.",
-"Wanneer werken de meeste mensen?",
-"Van maandag tot en met vrijdag.",
-"De meeste mensen zijn in het weekend vrij.",
-"We werken dan meestal niet.",
-"We gaan dan naar familie. Of we gaan naar buiten met de kinderen, of met vrienden.",
-"We hebben ook tijd om boodschappen te doen.",
-"Of andere leuke dingen",
-"bijvoorbeeld Nederlands leren.",
-"Op welke dagen zijn de winkels open?",
-"De meeste winkels zijn op maandag tot en met zaterdag open",
-"en veel winkels ook op zondag.",
-"Op maandagmorgen zijn veel winkels dicht.",
-"Mensen die in een winkel werken zijn dus meestal niet in het weekend vrij.",
-"Ze hebben op een andere dag vrij, bijvoorbeeld op maandag.",
-"Zijn scholen in het weekend dicht?",
-"Ja, alle scholen zijn dicht in het weekend.",
-"In het weekend hebben kinderen geen les.",
-"Kinderen tot twaalf jaar hebben meestal ook vrij op woensdagmiddag.",
-"En ze hebben zes weken vrij in de zomer!",
-"Hoe is dat in jullie land?"
-]
+# -------------------------
+# NORMALIZATION
+# -------------------------
 
 def normalize(text):
     text = text.lower()
     text = re.sub(r"[^\w\s]", "", text)
     return text.strip()
+
+# -------------------------
+# STRICT SCORING FUNCTION
+# -------------------------
 
 def score_sentence(user_input, correct):
     user_words = normalize(user_input).split()
@@ -59,7 +34,6 @@ def score_sentence(user_input, correct):
         else:
             feedback.append(f"❌ {word} (missing)")
 
-    # Penalize extra words
     if len(user_words) > len(correct_words):
         extra_words = user_words[len(correct_words):]
         for w in extra_words:
@@ -68,15 +42,42 @@ def score_sentence(user_input, correct):
     accuracy = round((correct_count / total) * 100, 2)
     return accuracy, feedback
 
+# -------------------------
+# STREAMLIT UI
+# -------------------------
+
 st.title("Dutch Dictation Trainer")
 
-if "index" not in st.session_state:
+# Detect available lessons automatically
+lessons_path = Path("lessons")
+available_lessons = [folder.name for folder in lessons_path.iterdir() if folder.is_dir()]
+
+lesson = st.selectbox("Select lesson", sorted(available_lessons))
+
+lesson_path = lessons_path / lesson
+audio_folder = lesson_path / "audio"
+
+# Dynamically import sentence list
+sentences_module = importlib.import_module(f"lessons.{lesson}.sentences")
+correct_sentences = sentences_module.sentences
+
+# Reset index if lesson changes
+if "current_lesson" not in st.session_state:
+    st.session_state.current_lesson = lesson
     st.session_state.index = 0
+
+if st.session_state.current_lesson != lesson:
+    st.session_state.current_lesson = lesson
+    st.session_state.index = 0
+
+# -------------------------
+# MAIN LOGIC
+# -------------------------
 
 if st.session_state.index < len(correct_sentences):
 
     current_sentence = correct_sentences[st.session_state.index]
-    audio_path = Path(AUDIO_FOLDER) / f"sentence_{st.session_state.index+1:02d}.mp3"
+    audio_path = audio_folder / f"sentence_{st.session_state.index+1:02d}.mp3"
 
     st.subheader(f"Sentence {st.session_state.index + 1}")
 
@@ -91,8 +92,8 @@ if st.session_state.index < len(correct_sentences):
         accuracy, feedback = score_sentence(user_input, current_sentence)
 
         st.markdown(f"## Accuracy: {accuracy}%")
-
         st.markdown("### Feedback:")
+
         for item in feedback:
             st.write(item)
 
@@ -101,4 +102,4 @@ if st.session_state.index < len(correct_sentences):
         st.rerun()
 
 else:
-    st.success("You completed all sentences!")
+    st.success("You completed this lesson!")
