@@ -1,4 +1,4 @@
-correct_sentences = [
+sentences = [
 "Les 3. Welke dag is het vandaag?",
 "Welke dag is het vandaag?",
 "Het is vandaag dinsdag.",
