@@ -1,4 +1,4 @@
-correct_sentences = [
+sentences = [
 "Les 4. De Nederlandse les",
 "Welke talen spreek je, Paula?",
 "Engels, Frans en een beetje Nederlands.",
