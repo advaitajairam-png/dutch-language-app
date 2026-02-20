@@ -2,30 +2,6 @@ import streamlit as st
 import re
 import importlib
 from pathlib import Path
-import json
-from datetime import date
-
-# -------------------------
-# CONFIG
-# -------------------------
-
-DATA_FILE = "user_progress.json"
-
-# -------------------------
-# LOAD / SAVE DATA
-# -------------------------
-
-def load_data():
-    if Path(DATA_FILE).exists():
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
-
-data = load_data()
 
 # -------------------------
 # NORMALIZATION
@@ -37,30 +13,45 @@ def normalize(text):
     return text.strip()
 
 # -------------------------
-# STRICT SCORING
+# WORD-BY-WORD SCORING
 # -------------------------
 
 def score_sentence(user_input, correct):
     user_words = normalize(user_input).split()
     correct_words = normalize(correct).split()
 
-    total = len(correct_words)
+    feedback = []
     correct_count = 0
 
-    for i, word in enumerate(correct_words):
-        if i < len(user_words) and user_words[i] == word:
-            correct_count += 1
+    max_len = max(len(user_words), len(correct_words))
 
-    accuracy = round((correct_count / total) * 100, 2)
-    return accuracy
+    for i in range(max_len):
+        if i < len(correct_words) and i < len(user_words):
+
+            if user_words[i] == correct_words[i]:
+                correct_count += 1
+                feedback.append(f"✅ {correct_words[i]}")
+            else:
+                feedback.append(
+                    f"❌ {correct_words[i]}  (you wrote: {user_words[i]})"
+                )
+
+        elif i < len(correct_words):
+            feedback.append(f"❌ {correct_words[i]}  (missing)")
+        else:
+            feedback.append(f"❌ extra word: {user_words[i]}")
+
+    accuracy = round((correct_count / len(correct_words)) * 100, 2)
+    return accuracy, feedback
 
 # -------------------------
-# STREAMLIT UI
+# APP
 # -------------------------
 
 st.set_page_config(page_title="Dutch Dictation Trainer", layout="centered")
 st.title("Dutch Dictation Trainer")
 
+# Lesson selection
 lessons_path = Path("lessons")
 available_lessons = sorted([f.name for f in lessons_path.iterdir() if f.is_dir()])
 lesson = st.selectbox("Select lesson", available_lessons)
@@ -71,10 +62,7 @@ audio_folder = lesson_path / "audio"
 sentences_module = importlib.import_module(f"lessons.{lesson}.sentences")
 correct_sentences = sentences_module.sentences
 
-# -------------------------
-# SESSION STATE
-# -------------------------
-
+# Session state
 if "index" not in st.session_state:
     st.session_state.index = 0
 
@@ -84,19 +72,8 @@ if "scores" not in st.session_state:
 if "input_key" not in st.session_state:
     st.session_state.input_key = 0
 
-# Reset when lesson changes
-if "current_lesson" not in st.session_state:
-    st.session_state.current_lesson = lesson
-
-if st.session_state.current_lesson != lesson:
-    st.session_state.current_lesson = lesson
-    st.session_state.index = 0
-    st.session_state.scores = []
-    st.session_state.input_key += 1
-
-# -------------------------
-# MAIN FLOW
-# -------------------------
+if "show_feedback" not in st.session_state:
+    st.session_state.show_feedback = False
 
 if st.session_state.index < len(correct_sentences):
 
@@ -111,7 +88,6 @@ if st.session_state.index < len(correct_sentences):
     else:
         st.warning("Audio missing.")
 
-    # FORM enables Enter to submit
     with st.form(key=f"form_{st.session_state.index}"):
 
         user_input = st.text_input(
@@ -123,18 +99,32 @@ if st.session_state.index < len(correct_sentences):
         submitted = st.form_submit_button("Submit (Press Enter)")
 
         if submitted:
+            accuracy, feedback = score_sentence(user_input, current_sentence)
 
-            accuracy = score_sentence(user_input, current_sentence)
             st.session_state.scores.append(accuracy)
+            st.session_state.current_feedback = feedback
+            st.session_state.current_accuracy = accuracy
+            st.session_state.show_feedback = True
 
-            st.markdown(f"### Accuracy: {accuracy}%")
+    # Show feedback AFTER submission
+    if st.session_state.show_feedback:
 
-            # Move to next sentence automatically
+        st.markdown(f"### Accuracy: {st.session_state.current_accuracy}%")
+
+        st.markdown("### Feedback:")
+        for item in st.session_state.current_feedback:
+            st.write(item)
+
+        st.markdown("### Correct Sentence:")
+        st.info(current_sentence)
+
+        if st.button("Next Sentence"):
             st.session_state.index += 1
             st.session_state.input_key += 1
+            st.session_state.show_feedback = False
             st.rerun()
 
-    # Live overall score
+    # Overall score live
     if st.session_state.scores:
         overall = round(sum(st.session_state.scores) / len(st.session_state.scores), 2)
         st.sidebar.markdown(f"📊 Overall Score: {overall}%")
