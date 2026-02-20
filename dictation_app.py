@@ -48,6 +48,7 @@ def score_sentence(user_input, correct):
 st.set_page_config(page_title="Dutch Dictation Trainer", layout="centered")
 st.title("Dutch Dictation Trainer")
 
+# Lesson selection
 lessons_path = Path("lessons")
 available_lessons = sorted([f.name for f in lessons_path.iterdir() if f.is_dir()])
 lesson = st.selectbox("Select lesson", available_lessons)
@@ -71,11 +72,8 @@ if "scores" not in st.session_state:
 if "input_key" not in st.session_state:
     st.session_state.input_key = 0
 
-if "audio_played" not in st.session_state:
-    st.session_state.audio_played = False
-
-if "audio_finished" not in st.session_state:
-    st.session_state.audio_finished = False
+if "audio_unlocked" not in st.session_state:
+    st.session_state.audio_unlocked = False
 
 if "show_feedback" not in st.session_state:
     st.session_state.show_feedback = False
@@ -92,32 +90,22 @@ if st.session_state.index < len(correct_sentences):
 
     st.subheader(f"{lesson.upper()} — Sentence {sentence_number}/{len(correct_sentences)}")
 
-    # ---- AUDIO CONTROL ----
+    # ---- AUDIO LOCK ----
 
-    if not st.session_state.audio_played:
+    if not st.session_state.audio_unlocked:
 
         if st.button("▶ Start Listening"):
-            st.session_state.audio_played = True
-            st.session_state.audio_finished = False
+            st.session_state.audio_unlocked = True
             st.rerun()
 
-    elif st.session_state.audio_played and not st.session_state.audio_finished:
-
+    else:
+        # Show audio only once
         if audio_path.exists():
-            st.audio(str(audio_path), start_time=0)
+            st.audio(str(audio_path))
         else:
             st.warning("Audio missing.")
 
-        st.info("Listen carefully. You can only hear this once.")
-
-        if st.button("✔ I Finished Listening"):
-            st.session_state.audio_finished = True
-            st.rerun()
-
-    # ---- TYPING ENABLED ONLY AFTER AUDIO ----
-
-    if st.session_state.audio_finished:
-
+        # ---- TEXT INPUT ----
         with st.form(key=f"form_{st.session_state.index}"):
 
             user_input = st.text_input(
@@ -150,11 +138,9 @@ if st.session_state.index < len(correct_sentences):
         st.info(current_sentence)
 
         if st.button("Next Sentence"):
-
             st.session_state.index += 1
             st.session_state.input_key += 1
-            st.session_state.audio_played = False
-            st.session_state.audio_finished = False
+            st.session_state.audio_unlocked = False
             st.session_state.show_feedback = False
             st.rerun()
 
