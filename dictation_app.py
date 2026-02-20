@@ -6,10 +6,14 @@ import json
 from datetime import date
 
 # -------------------------
-# PERSISTENCE FILE
+# CONFIG
 # -------------------------
 
 DATA_FILE = "user_progress.json"
+
+# -------------------------
+# LOAD / SAVE DATA
+# -------------------------
 
 def load_data():
     if Path(DATA_FILE).exists():
@@ -42,29 +46,23 @@ def score_sentence(user_input, correct):
 
     total = len(correct_words)
     correct_count = 0
-    errors = 0
 
     for i, word in enumerate(correct_words):
         if i < len(user_words) and user_words[i] == word:
             correct_count += 1
-        else:
-            errors += 1
-
-    if len(user_words) > len(correct_words):
-        errors += len(user_words) - len(correct_words)
 
     accuracy = round((correct_count / total) * 100, 2)
-    return accuracy, errors
+    return accuracy
 
 # -------------------------
 # STREAMLIT UI
 # -------------------------
 
-st.title("Dutch Dictation Trainer V2")
+st.set_page_config(page_title="Dutch Dictation Trainer", layout="centered")
+st.title("Dutch Dictation Trainer")
 
 lessons_path = Path("lessons")
-available_lessons = sorted([folder.name for folder in lessons_path.iterdir() if folder.is_dir()])
-
+available_lessons = sorted([f.name for f in lessons_path.iterdir() if f.is_dir()])
 lesson = st.selectbox("Select lesson", available_lessons)
 
 lesson_path = lessons_path / lesson
@@ -73,43 +71,31 @@ audio_folder = lesson_path / "audio"
 sentences_module = importlib.import_module(f"lessons.{lesson}.sentences")
 correct_sentences = sentences_module.sentences
 
-# Initialize lesson data
-if lesson not in data:
-    data[lesson] = {
-        "scores": [],
-        "weak_sentences": [],
-        "completed": False
-    }
+# -------------------------
+# SESSION STATE
+# -------------------------
 
 if "index" not in st.session_state:
     st.session_state.index = 0
 
-# Reset if lesson changes
+if "scores" not in st.session_state:
+    st.session_state.scores = []
+
+if "input_key" not in st.session_state:
+    st.session_state.input_key = 0
+
+# Reset when lesson changes
 if "current_lesson" not in st.session_state:
     st.session_state.current_lesson = lesson
 
 if st.session_state.current_lesson != lesson:
     st.session_state.current_lesson = lesson
     st.session_state.index = 0
+    st.session_state.scores = []
+    st.session_state.input_key += 1
 
 # -------------------------
-# DAILY STREAK
-# -------------------------
-
-today = str(date.today())
-
-if "last_practice" not in data:
-    data["last_practice"] = today
-    data["streak"] = 1
-else:
-    if data["last_practice"] != today:
-        data["streak"] += 1
-        data["last_practice"] = today
-
-st.sidebar.markdown(f"🔥 Streak: {data.get('streak',1)} days")
-
-# -------------------------
-# MAIN LOGIC
+# MAIN FLOW
 # -------------------------
 
 if st.session_state.index < len(correct_sentences):
@@ -123,47 +109,39 @@ if st.session_state.index < len(correct_sentences):
     if audio_path.exists():
         st.audio(str(audio_path))
     else:
-        st.warning("Audio file missing.")
+        st.warning("Audio missing.")
 
-    user_input = st.text_input("Type what you hear:")
+    # FORM enables Enter to submit
+    with st.form(key=f"form_{st.session_state.index}"):
 
-    if st.button("Check Answer"):
-        accuracy, errors = score_sentence(user_input, current_sentence)
+        user_input = st.text_input(
+            "Type what you hear:",
+            key=f"user_input_{st.session_state.input_key}",
+            autocomplete="off"
+        )
 
-        st.markdown(f"## Accuracy: {accuracy}%")
+        submitted = st.form_submit_button("Submit (Press Enter)")
 
-        data[lesson]["scores"].append(accuracy)
+        if submitted:
 
-        if accuracy < 100:
-            data[lesson]["weak_sentences"].append(st.session_state.index)
+            accuracy = score_sentence(user_input, current_sentence)
+            st.session_state.scores.append(accuracy)
 
-        save_data(data)
+            st.markdown(f"### Accuracy: {accuracy}%")
 
-    if st.button("Next Sentence"):
-        st.session_state.index += 1
-        st.rerun()
+            # Move to next sentence automatically
+            st.session_state.index += 1
+            st.session_state.input_key += 1
+            st.rerun()
+
+    # Live overall score
+    if st.session_state.scores:
+        overall = round(sum(st.session_state.scores) / len(st.session_state.scores), 2)
+        st.sidebar.markdown(f"📊 Overall Score: {overall}%")
 
 else:
     st.success("Lesson Completed!")
 
-    avg_score = round(sum(data[lesson]["scores"]) / len(data[lesson]["scores"]), 2)
-    st.markdown(f"### Final Lesson Average: {avg_score}%")
-
-    if data[lesson]["weak_sentences"]:
-        st.warning("You have weak sentences to review.")
-
-        if st.button("Review Weak Sentences"):
-            st.session_state.index = data[lesson]["weak_sentences"][0]
-            st.rerun()
-
-    data[lesson]["completed"] = True
-    save_data(data)
-
-# -------------------------
-# SIDEBAR PROGRESS
-# -------------------------
-
-if data[lesson]["scores"]:
-    avg = round(sum(data[lesson]["scores"]) / len(data[lesson]["scores"]), 2)
-    st.sidebar.markdown(f"📊 Lesson Average: {avg}%")
-    st.sidebar.markdown(f"Completed: {data[lesson]['completed']}")
+    if st.session_state.scores:
+        final_score = round(sum(st.session_state.scores) / len(st.session_state.scores), 2)
+        st.markdown(f"## Final Score: {final_score}%")
