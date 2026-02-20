@@ -22,22 +22,19 @@ def score_sentence(user_input, correct):
 
     feedback = []
     correct_count = 0
-
     max_len = max(len(user_words), len(correct_words))
 
     for i in range(max_len):
         if i < len(correct_words) and i < len(user_words):
-
             if user_words[i] == correct_words[i]:
                 correct_count += 1
                 feedback.append(f"✅ {correct_words[i]}")
             else:
                 feedback.append(
-                    f"❌ {correct_words[i]}  (you wrote: {user_words[i]})"
+                    f"❌ {correct_words[i]} (you wrote: {user_words[i]})"
                 )
-
         elif i < len(correct_words):
-            feedback.append(f"❌ {correct_words[i]}  (missing)")
+            feedback.append(f"❌ {correct_words[i]} (missing)")
         else:
             feedback.append(f"❌ extra word: {user_words[i]}")
 
@@ -51,7 +48,6 @@ def score_sentence(user_input, correct):
 st.set_page_config(page_title="Dutch Dictation Trainer", layout="centered")
 st.title("Dutch Dictation Trainer")
 
-# Lesson selection
 lessons_path = Path("lessons")
 available_lessons = sorted([f.name for f in lessons_path.iterdir() if f.is_dir()])
 lesson = st.selectbox("Select lesson", available_lessons)
@@ -62,7 +58,10 @@ audio_folder = lesson_path / "audio"
 sentences_module = importlib.import_module(f"lessons.{lesson}.sentences")
 correct_sentences = sentences_module.sentences
 
-# Session state
+# -------------------------
+# SESSION STATE
+# -------------------------
+
 if "index" not in st.session_state:
     st.session_state.index = 0
 
@@ -72,8 +71,18 @@ if "scores" not in st.session_state:
 if "input_key" not in st.session_state:
     st.session_state.input_key = 0
 
+if "audio_played" not in st.session_state:
+    st.session_state.audio_played = False
+
+if "audio_finished" not in st.session_state:
+    st.session_state.audio_finished = False
+
 if "show_feedback" not in st.session_state:
     st.session_state.show_feedback = False
+
+# -------------------------
+# MAIN FLOW
+# -------------------------
 
 if st.session_state.index < len(correct_sentences):
 
@@ -83,30 +92,52 @@ if st.session_state.index < len(correct_sentences):
 
     st.subheader(f"{lesson.upper()} — Sentence {sentence_number}/{len(correct_sentences)}")
 
-    if audio_path.exists():
-        st.audio(str(audio_path))
-    else:
-        st.warning("Audio missing.")
+    # ---- AUDIO CONTROL ----
 
-    with st.form(key=f"form_{st.session_state.index}"):
+    if not st.session_state.audio_played:
 
-        user_input = st.text_input(
-            "Type what you hear:",
-            key=f"user_input_{st.session_state.input_key}",
-            autocomplete="off"
-        )
+        if st.button("▶ Start Listening"):
+            st.session_state.audio_played = True
+            st.session_state.audio_finished = False
+            st.rerun()
 
-        submitted = st.form_submit_button("Submit (Press Enter)")
+    elif st.session_state.audio_played and not st.session_state.audio_finished:
 
-        if submitted:
-            accuracy, feedback = score_sentence(user_input, current_sentence)
+        if audio_path.exists():
+            st.audio(str(audio_path), start_time=0)
+        else:
+            st.warning("Audio missing.")
 
-            st.session_state.scores.append(accuracy)
-            st.session_state.current_feedback = feedback
-            st.session_state.current_accuracy = accuracy
-            st.session_state.show_feedback = True
+        st.info("Listen carefully. You can only hear this once.")
 
-    # Show feedback AFTER submission
+        if st.button("✔ I Finished Listening"):
+            st.session_state.audio_finished = True
+            st.rerun()
+
+    # ---- TYPING ENABLED ONLY AFTER AUDIO ----
+
+    if st.session_state.audio_finished:
+
+        with st.form(key=f"form_{st.session_state.index}"):
+
+            user_input = st.text_input(
+                "Type what you heard:",
+                key=f"user_input_{st.session_state.input_key}",
+                autocomplete="off"
+            )
+
+            submitted = st.form_submit_button("Submit (Press Enter)")
+
+            if submitted:
+                accuracy, feedback = score_sentence(user_input, current_sentence)
+
+                st.session_state.scores.append(accuracy)
+                st.session_state.current_feedback = feedback
+                st.session_state.current_accuracy = accuracy
+                st.session_state.show_feedback = True
+
+    # ---- FEEDBACK ----
+
     if st.session_state.show_feedback:
 
         st.markdown(f"### Accuracy: {st.session_state.current_accuracy}%")
@@ -119,12 +150,16 @@ if st.session_state.index < len(correct_sentences):
         st.info(current_sentence)
 
         if st.button("Next Sentence"):
+
             st.session_state.index += 1
             st.session_state.input_key += 1
+            st.session_state.audio_played = False
+            st.session_state.audio_finished = False
             st.session_state.show_feedback = False
             st.rerun()
 
-    # Overall score live
+    # ---- OVERALL SCORE ----
+
     if st.session_state.scores:
         overall = round(sum(st.session_state.scores) / len(st.session_state.scores), 2)
         st.sidebar.markdown(f"📊 Overall Score: {overall}%")
